@@ -1,4 +1,4 @@
-package org.javi.master
+package org.javi.master.batch
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
@@ -24,21 +24,21 @@ object App {
     println(df.count())
     println(spark.conf.get("spark.master"))
 
-    Thread.sleep(3000)
-    df.show(200, false)
+    Thread.sleep(120000)
+    df.show(10, false)
 
     val left = df.select(col("werks"), col("matnr"), col("lgort"))
     val right = df.select("werks", "matnr", "zcat")
 
     val finalDf = left.join(right, Seq("werks", "matnr"))
-    finalDf.show(20, false)
+//    finalDf.show(20, false)
     val outputRelativePath = "data/parquet/"
     val outputAbsolutePath = "/"+outputRelativePath
     val outputPath = sparkMaster match {
       case "local[*]" => outputRelativePath
       case _ => outputAbsolutePath
     }
-    df.write.mode("append").parquet(outputPath)
+    finalDf.write.mode("append").parquet(outputPath)
 
   }
 }

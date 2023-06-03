@@ -1,4 +1,4 @@
-/data
+*/data
 /.idea
-/target
-spark_project.iml
+*/target
+*.iml
