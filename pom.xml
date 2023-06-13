@@ -17,6 +17,7 @@
         <scala.version>2.12.17</scala.version>
         <scala.short.version>2.12</scala.short.version>
         <spark.version>3.4.0</spark.version>
+        <kafka.version>3.4.0</kafka.version>
     </properties>
 
     <dependencyManagement>
@@ -43,6 +44,43 @@
                 <version>${spark.version}</version>
                 <scope>provided</scope>
             </dependency>
+
+            <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-streaming -->
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-streaming_${scala.short.version}</artifactId>
+                <version>${spark.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients -->
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>${kafka.version}</version>
+            </dependency>
+
+            <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-streaming-kafka-0-10 -->
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-streaming-kafka-0-10_${scala.short.version}</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+
+
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-sql-kafka-0-10_2.12</artifactId>
+                <version>3.4.0</version>
+            </dependency>
+
+
+<!--            <dependency>-->
+<!--                <groupId>org.apache.spark</groupId>-->
+<!--                <artifactId>spark-hive_2.12</artifactId>-->
+<!--                <version>3.2.1</version>-->
+<!--            </dependency>-->
+
         </dependencies>
     </dependencyManagement>
 
@@ -60,6 +98,7 @@
                     </execution>
                 </executions>
             </plugin>
+
         </plugins>
     </build>
 
