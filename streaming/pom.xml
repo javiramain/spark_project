@@ -25,28 +25,33 @@
         </dependency>
 
         <!--        Spark Streaming -->
-        <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-streaming_${scala.short.version}</artifactId>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-streaming_${scala.short.version}</artifactId>-->
+<!--        </dependency>-->
 
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-sql-kafka-0-10_2.12</artifactId>
         </dependency>
 
+        <!-- Mongo -->
 
+        <dependency>
+        <groupId>org.mongodb.spark</groupId>
+        <artifactId>mongo-spark-connector_${scala.short.version}</artifactId>
+        </dependency>
 <!--        Kafka -->
 
-        <dependency>
-            <groupId>org.apache.kafka</groupId>
-            <artifactId>kafka-clients</artifactId>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.apache.kafka</groupId>-->
+<!--            <artifactId>kafka-clients</artifactId>-->
+<!--        </dependency>-->
 
-        <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-streaming-kafka-0-10_${scala.short.version}</artifactId>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-streaming-kafka-0-10_${scala.short.version}</artifactId>-->
+<!--        </dependency>-->
 
         <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
 <!--        <dependency>-->
@@ -54,6 +59,13 @@
 <!--            <artifactId>slf4j-api</artifactId>-->
 <!--            <version>2.0.7</version>-->
 <!--        </dependency>-->
+
+        <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.7</version>
+        </dependency>
 
     </dependencies>
 <build>
