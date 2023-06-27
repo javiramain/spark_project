@@ -58,24 +58,21 @@ object StreamingApp extends Logging{
         .load()
     println("mongodatabase:")
 
-//    val b = mongoDataBase.withColumn("valores", map_from_entries(col("caracteristicas_venta")))
-
     val flattenedDf = mongoDataBase
       .select( "nombre_articulo","palabras_clave", "caracteristicas_venta.*")
-//      .withColumn("valores",typedLit(Map.empty[String, String]))
+      .withColumn("valores",typedLit(Map.empty[String, String]))
     val columns = flattenedDf.drop("palabras_clave", "nombre_articulo").schema.fieldNames
-//
+
     println(columns.mkString(", "))
-//    val mapCol = DataTypes.createMapType(StringType, StringType)
-//
-    val a = columns.foldLeft(flattenedDf.withColumn("valores", lit(null))) { (tempDf, colName) =>
+    val flattenedMongo = columns.foldLeft(flattenedDf.withColumn("valores", lit(null))) { (tempDf, colName) =>
       tempDf
         .withColumn("valores", when(
           col(colName).isNotNull, concat_ws(s", ", col("valores"), concat_ws(": ", lit(colName), col(colName)))
         ).otherwise(col("valores")))
-    }
-//
-    a.show(false)
+    }.select("nombre_articulo", "palabras_clave", "valores")
+// Meter un toLowerCase en la busqueda y en las palabras clave
+
+    flattenedMongo.show(false)
 
 
     // Leer los mensajes desde el topic de Kafka
@@ -87,19 +84,13 @@ object StreamingApp extends Logging{
         .load()
         .selectExpr("CAST(value AS STRING) as BUSQUEDA")
 
-//    val splittedSearch = kafkaDF
-//      .withColumn("palabras_clave", col("BUSQUEDA"))
-
       kafkaDF
         .writeStream
         .foreachBatch { (batchDF: Dataset[Row], batchId: Long) =>
-//          val filtro = batchDF.select("BUSQUEDA")
-          println("batchdf:")
-//          batchDF.show(false)
-          //meterle un try por si cuando se ejecute no se ha recibido ningun mensaje aun
+
           val a = batchDF.select("BUSQUEDA").collect()(0).mkString.split(" ")
 //            .filter( _ != " ")
-          val output = mongoDataBase
+          val output = flattenedMongo
             .withColumn("busqueda", lit(a))
             .withColumn("inters_size", size(array_intersect(col("busqueda"), col("palabras_clave"))))
             .filter(col("inters_size") > 0)
@@ -107,10 +98,6 @@ object StreamingApp extends Logging{
             .orderBy(desc("inters_size"))
             .select(col("nombre_articulo").as("key"), col("caracteristicas_venta").cast(StringType).as("value"))
 
-//            .withColumn("value", concat_ws(": ", col("nombre_articulo"), col("caracteristicas_venta")))
-
-//            .withColumn("value", col("value"))
-          //            .as[String]
           println("output: ")
           output.show(false)
           output
