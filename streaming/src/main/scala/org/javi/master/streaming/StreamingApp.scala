@@ -9,9 +9,9 @@ import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{Dataset, ForeachWriter, Row}
-import org.apache.spark.sql.functions.{col, lit}
+import org.apache.spark.sql.functions.{array_intersect, col, concat, concat_ws, desc, explode, lit, map_concat, map_from_entries, size, split, typedLit, when}
 import org.apache.spark.sql.streaming.StreamingQuery
-import org.apache.spark.sql.types.{StringType, StructType}
+import org.apache.spark.sql.types.{DataTypes, StringType, StructType}
 import org.slf4j.LoggerFactory
 
 import java.util.Properties
@@ -32,7 +32,9 @@ object StreamingApp extends Logging{
       val sparkConf = new SparkConf()
 //        .set("spark.driver.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
 //        .set("spark.executor.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
-        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/localDb.Usuarios")
+        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/elmercado.articulos")
+//        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/streamingdb.usuarios") //conectar solamente con el master (PRIMARY)
+
         .set("spark.sql.streaming.checkpointLocation", "/tmp")
 
       log.info("starting Spark session")
@@ -45,32 +47,38 @@ object StreamingApp extends Logging{
 
       import ssc.implicits._
       val sparkMaster = ssc.conf.get("spark.master")
-      val bootstrapServer = sparkMaster match {
-        case "local[*]" => "localhost:9095"
-        case _ => "workernode1:9092,workernode2:9093,workernode3:9094"
+      val (bootstrapServer, mongoURI) = sparkMaster match {
+        case "local[*]" => ("localhost:9095", "mongodb://localhost:27017/elmercado.articulos")
+        case _ => ("workernode1:9092,workernode2:9093,workernode3:9094", "mongodb://masternode:27018/elmercado.articulos")
       }
-      /*
 
-      mongoInfo
-        .write
-        .format("kafka")
-        .option("kafka.bootstrap.servers", bootstrapServer)
-        .option("topic", "mongoOutput")
-        .save()
-
-
-//      println("KafkaStream")
-      // Si la query es de una fuente en streaming, hay que ejecutarla con writeStream.start()
-//      KafkaStream.writeStream
-      //      .format("console").outputMode("append")
-//        .start().awaitTermination()
-
-*/
       val mongoDataBase = ssc.read
         .format("mongodb")
+        .option("uri", mongoURI)
         .load()
+    println("mongodatabase:")
 
-      // Leer los mensajes desde el topic de Kafka
+//    val b = mongoDataBase.withColumn("valores", map_from_entries(col("caracteristicas_venta")))
+
+    val flattenedDf = mongoDataBase
+      .select( "nombre_articulo","palabras_clave", "caracteristicas_venta.*")
+//      .withColumn("valores",typedLit(Map.empty[String, String]))
+    val columns = flattenedDf.drop("palabras_clave", "nombre_articulo").schema.fieldNames
+//
+    println(columns.mkString(", "))
+//    val mapCol = DataTypes.createMapType(StringType, StringType)
+//
+    val a = columns.foldLeft(flattenedDf.withColumn("valores", lit(null))) { (tempDf, colName) =>
+      tempDf
+        .withColumn("valores", when(
+          col(colName).isNotNull, concat_ws(s", ", col("valores"), concat_ws(": ", lit(colName), col(colName)))
+        ).otherwise(col("valores")))
+    }
+//
+    a.show(false)
+
+
+    // Leer los mensajes desde el topic de Kafka
       val kafkaDF = ssc.readStream
         .format("kafka")
         .option("kafka.bootstrap.servers",bootstrapServer)
@@ -79,42 +87,31 @@ object StreamingApp extends Logging{
         .load()
         .selectExpr("CAST(value AS STRING) as BUSQUEDA")
 
-//    kafkaDF.toJSON.writeStream
-//      .format("kafka")
-//      .option("kafka.bootstrap.servers",bootstrapServer)
-//      .option("topic", "output")
-//      .start().awaitTermination()
-
-//
-
-//
-//      val a = kafkaDF.select("BUSQUEDA").writeStream.outputMode("memory").start()
-//
-//      val mongoInfo = mongoDataBase
-//        .select(col("nombre"))
-//        .as[String]
-
-
-//    val output = mongoDataBase
-    //            .as[String]
-//    output.show(false)
-//    output
-//      .write
-//      .format("kafka")
-//      .option("kafka.bootstrap.servers", "localhost:9095")
-//      .option("topic", "output")
-//      .save()
+//    val splittedSearch = kafkaDF
+//      .withColumn("palabras_clave", col("BUSQUEDA"))
 
       kafkaDF
         .writeStream
         .foreachBatch { (batchDF: Dataset[Row], batchId: Long) =>
 //          val filtro = batchDF.select("BUSQUEDA")
-          batchDF.show(false)
+          println("batchdf:")
+//          batchDF.show(false)
           //meterle un try por si cuando se ejecute no se ha recibido ningun mensaje aun
-          val a = batchDF.select("BUSQUEDA").collect()(0).mkString
-          val output = mongoDataBase.filter(col("apellido")===a).select("nombre")
-            .withColumn("value", col("nombre"))
-//            .as[String]
+          val a = batchDF.select("BUSQUEDA").collect()(0).mkString.split(" ")
+//            .filter( _ != " ")
+          val output = mongoDataBase
+            .withColumn("busqueda", lit(a))
+            .withColumn("inters_size", size(array_intersect(col("busqueda"), col("palabras_clave"))))
+            .filter(col("inters_size") > 0)
+//            .filter(col("palabras_clave").contains(a))
+            .orderBy(desc("inters_size"))
+            .select(col("nombre_articulo").as("key"), col("caracteristicas_venta").cast(StringType).as("value"))
+
+//            .withColumn("value", concat_ws(": ", col("nombre_articulo"), col("caracteristicas_venta")))
+
+//            .withColumn("value", col("value"))
+          //            .as[String]
+          println("output: ")
           output.show(false)
           output
             .write
