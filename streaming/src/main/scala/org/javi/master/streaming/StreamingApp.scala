@@ -6,7 +6,7 @@ package org.javi.master.streaming
 import org.apache.log4j.PropertyConfigurator
 import com.google.crypto.tink.proto.KmsAeadKeyFormat
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, rdd}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{Dataset, ForeachWriter, Row}
 import org.apache.spark.sql.functions.{array_intersect, col, concat, concat_ws, desc, explode, lit, map_concat, map_from_entries, size, split, typedLit, when}
@@ -19,15 +19,16 @@ import java.util.Properties
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 
-object StreamingApp extends Logging{
+object StreamingApp extends Logging {
 
 
   def main(args: Array[String]): Unit = {
 //    val log4jConfPath = "src/main/resources/log4j2.properties"
 //    PropertyConfigurator.configure(log4jConfPath)
-    val log = LoggerFactory.getLogger(getClass)
+//    val log = LoggerFactory.getLogger(getClass)
 //    conf.set("spark.jars.packages","org.mongodb.spark:mongo-spark-connector:10.0.5,org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.1")
 //    try {
+
 
       val sparkConf = new SparkConf()
 //        .set("spark.driver.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
@@ -52,27 +53,34 @@ object StreamingApp extends Logging{
         case _ => ("workernode1:9092,workernode2:9093,workernode3:9094", "mongodb://masternode:27018/elmercado.articulos")
       }
 
+
       val mongoDataBase = ssc.read
         .format("mongodb")
-        .option("uri", mongoURI)
+//        .option("uri", mongoURI)
         .load()
-    println("mongodatabase:")
+//    println("mongodatabase:")
 
     val flattenedDf = mongoDataBase
-      .select( "nombre_articulo","palabras_clave", "caracteristicas_venta.*")
-      .withColumn("valores",typedLit(Map.empty[String, String]))
-    val columns = flattenedDf.drop("palabras_clave", "nombre_articulo").schema.fieldNames
+      .select( "nombre_articulo","palabras_clave", "caracteristicas_venta", "caracteristicas_venta.*")
+      .withColumn("valores",concat(lit("Articulo: "),col("nombre_articulo"),lit("\nCaracteristicas: \n")))
+    val columns = flattenedDf.drop( "nombre_articulo", "palabras_clave", "caracteristicas_venta", "valores").schema.fieldNames
 
-    println(columns.mkString(", "))
-    val flattenedMongo = columns.foldLeft(flattenedDf.withColumn("valores", lit(null))) { (tempDf, colName) =>
-      tempDf
-        .withColumn("valores", when(
-          col(colName).isNotNull, concat_ws(s", ", col("valores"), concat_ws(": ", lit(colName), col(colName)))
-        ).otherwise(col("valores")))
-    }.select("nombre_articulo", "palabras_clave", "valores")
+//    flattenedDf.show(false)
+    val flattenedMongo = columns.foldLeft(flattenedDf) { (tempDf, colName) =>
+
+        tempDf
+          .withColumn("valores", when(
+            col(colName).isNotNull and !col("valores").endsWith(": \n"), concat_ws(s", ", col("valores"), concat_ws(": ", lit(colName), col(colName)))
+          ).
+            when(
+              col(colName).isNotNull, concat(col("valores"), concat_ws(": ", lit(colName), col(colName))))
+                .otherwise(col("valores"))).cache
+
+    }
+      .select("nombre_articulo", "palabras_clave", "valores", "caracteristicas_venta")
 // Meter un toLowerCase en la busqueda y en las palabras clave
 
-    flattenedMongo.show(false)
+//    flattenedMongo.show(false)
 
 
     // Leer los mensajes desde el topic de Kafka
@@ -88,29 +96,46 @@ object StreamingApp extends Logging{
         .writeStream
         .foreachBatch { (batchDF: Dataset[Row], batchId: Long) =>
 
-          val a = batchDF.select("BUSQUEDA").collect()(0).mkString.split(" ")
+          val busqueda = batchDF.select("BUSQUEDA").collect()(0).mkString.split(" ")
 //            .filter( _ != " ")
           val output = flattenedMongo
-            .withColumn("busqueda", lit(a))
+            .withColumn("busqueda", lit(busqueda))
             .withColumn("inters_size", size(array_intersect(col("busqueda"), col("palabras_clave"))))
             .filter(col("inters_size") > 0)
 //            .filter(col("palabras_clave").contains(a))
             .orderBy(desc("inters_size"))
-            .select(col("nombre_articulo").as("key"), col("caracteristicas_venta").cast(StringType).as("value"))
+            .select(
+//              col("nombre_articulo").as("key"),
+              col("valores").cast(StringType).as("value"))
 
-          println("output: ")
-          output.show(false)
-          output
-            .write
-            .format("kafka")
-            .option("kafka.bootstrap.servers", "localhost:9095")
-            .option("topic", "output")
-//            .format("parquet").mode("append")
-//            .save("/home/javi/Documentos/TFM/spark_project/streaming/salida/")
-            .save
+
+          val dummyData = Seq("No se ha encontrado ningun artículo con esas palabras clave")
+          val noSuchArticleMessage = ssc.sparkContext.parallelize(dummyData).toDF( "value")
+
+          output.count() match {
+            case 0 =>
+              noSuchArticleMessage
+                .write
+                .format("kafka")
+                .option("kafka.bootstrap.servers", "localhost:9095")
+                .option("topic", "output")
+
+                .save
+//              ()
+            case _ =>
+              output
+                .write
+                .format("kafka")
+                .option("kafka.bootstrap.servers", "localhost:9095")
+                .option("topic", "output")
+
+                .save
+//              ()
+          }
+
 
           println("saved results")
-          ()
+//          ()
         }
           .start().awaitTermination()
 
