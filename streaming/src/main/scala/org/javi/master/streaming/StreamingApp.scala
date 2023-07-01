@@ -33,7 +33,8 @@ object StreamingApp extends Logging {
       val sparkConf = new SparkConf()
 //        .set("spark.driver.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
 //        .set("spark.executor.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
-        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/elmercado.articulos")
+        .set("spark.mongodb.read.connection.uri", "mongodb://masternode:27017/elmercado.articulos")
+        .set("spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.11:2.3.2")
 //        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/streamingdb.usuarios") //conectar solamente con el master (PRIMARY)
 
         .set("spark.sql.streaming.checkpointLocation", "/tmp")
@@ -59,7 +60,7 @@ object StreamingApp extends Logging {
 //        .option("uri", mongoURI)
         .load()
 //    println("mongodatabase:")
-
+    println("mongo read correctly")
     val flattenedDf = mongoDataBase
       .select( "nombre_articulo","palabras_clave", "caracteristicas_venta", "caracteristicas_venta.*")
       .withColumn("valores",concat(lit("Articulo: "),col("nombre_articulo"),lit("\nCaracteristicas: \n")))
@@ -80,6 +81,7 @@ object StreamingApp extends Logging {
       .select("nombre_articulo", "palabras_clave", "valores", "caracteristicas_venta")
 // Meter un toLowerCase en la busqueda y en las palabras clave
 
+    println("caracteristicas venta mapeadas")
 //    flattenedMongo.show(false)
 
 
@@ -92,6 +94,7 @@ object StreamingApp extends Logging {
         .load()
         .selectExpr("CAST(value AS STRING) as BUSQUEDA")
 
+    // TODO: meter validacion para que solo haga ésto cuando el streaming haya recibido algun mensaje. Si no falla en el cluster
       kafkaDF
         .writeStream
         .foreachBatch { (batchDF: Dataset[Row], batchId: Long) =>
@@ -114,19 +117,21 @@ object StreamingApp extends Logging {
 
           output.count() match {
             case 0 =>
+              println("No se ha encontrado ningun articulo")
               noSuchArticleMessage
                 .write
                 .format("kafka")
-                .option("kafka.bootstrap.servers", "localhost:9095")
+                .option("kafka.bootstrap.servers", bootstrapServer)
                 .option("topic", "output")
 
                 .save
 //              ()
             case _ =>
+              println("escribiendo resultados")
               output
                 .write
                 .format("kafka")
-                .option("kafka.bootstrap.servers", "localhost:9095")
+                .option("kafka.bootstrap.servers", bootstrapServer)
                 .option("topic", "output")
 
                 .save
