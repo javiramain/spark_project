@@ -1,7 +1,7 @@
 package org.javi.master.streaming
 
 
-import org.apache.spark.{SparkConf}
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{Dataset, Row}
 import org.apache.spark.sql.functions.{array_intersect, col, concat, concat_ws, desc, explode, lit, map_concat, map_from_entries, size, split, typedLit, when}
@@ -17,30 +17,17 @@ object StreamingApp extends Logging {
 
 
   def main(args: Array[String]): Unit = {
-//    val log4jConfPath = "src/main/resources/log4j2.properties"
-//    PropertyConfigurator.configure(log4jConfPath)
-//    val log = LoggerFactory.getLogger(getClass)
-//    conf.set("spark.jars.packages","org.mongodb.spark:mongo-spark-connector:10.0.5,org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.1")
-//    try {
-
 
       val sparkConf = new SparkConf()
-//        .set("spark.driver.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
-//        .set("spark.executor.extraJavaOptions", s"-Dlog4j.configuration=file:$log4jConfPath")
-//        .set("spark.mongodb.read.connection.uri", "mongodb://masternode:27017/elmercado.articulos")
-        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/elmercado.articulos")
-
+        .set("spark.mongodb.read.connection.uri", "mongodb://masternode:27017/elmercado.articulos")
         .set("spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.11:2.3.2")
-//        .set("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/streamingdb.usuarios") //conectar solamente con el master (PRIMARY)
-
         .set("spark.sql.streaming.checkpointLocation", "/tmp")
 
       log.info("starting Spark session")
       val ssc = SparkSession
         .builder()
         .config(sparkConf)
-        .appName("KafkaStreaming")
-//        .config(sparkConf)
+        .appName("ElMercado-StreamingApplication")
         .getOrCreate()
 
       import ssc.implicits._
@@ -91,17 +78,12 @@ object StreamingApp extends Logging {
         .load()
         .selectExpr("CAST(value AS STRING) as BUSQUEDA")
 
-    // TODO: meter validacion para que solo haga ésto cuando el streaming haya recibido algun mensaje. Si no falla en el cluster
-
       kafkaDF
         .writeStream
         .foreachBatch { (batchDF: Dataset[Row], batchId: Long) =>
           if (batchDF.count() == 1) {
-//            batchDF.show()
-            //          while (batchDF.count==1) {
-            val busqueda = batchDF.select("BUSQUEDA").collect()(0).mkString.replace("\"", "").split(" ")
-            //            .filter( _ != " ")
-//            println(busqueda.mkString)
+            val busqueda = batchDF.select("BUSQUEDA").collect()(0).mkString.replace("\"", "")
+              .toLowerCase.split(" ")
             val output = flattenedMongo
               .withColumn("busqueda", lit(busqueda))
               .withColumn("inters_size", size(array_intersect(col("busqueda"), col("palabras_clave"))))
@@ -109,11 +91,9 @@ object StreamingApp extends Logging {
               //            .filter(col("palabras_clave").contains(a))
               .orderBy(desc("inters_size"))
               .select(
-                //              col("nombre_articulo").as("key"),
                 col("valores").cast(StringType).as("value"))
 
-//            println("output")
-//            output.show(false)
+
             val dummyData = Seq("No se ha encontrado ningun artículo con esas palabras clave")
             val noSuchArticleMessage = ssc.sparkContext.parallelize(dummyData).toDF("value")
 
@@ -125,7 +105,6 @@ object StreamingApp extends Logging {
                   .format("kafka")
                   .option("kafka.bootstrap.servers", bootstrapServer)
                   .option("topic", "output")
-
                   .save
               //              ()
               case _ =>
@@ -135,46 +114,11 @@ object StreamingApp extends Logging {
                   .format("kafka")
                   .option("kafka.bootstrap.servers", bootstrapServer)
                   .option("topic", "output")
-
                   .save
-              //              ()
             }
-
-
             println("saved results")
           }
-//          }
-//          ()
         }
           .start().awaitTermination()
-
-//      kafkaDF.writeStream.start()
-
-      //
-//
-//
-//      val query = mongoInfo
-//        .writeStream
-//        .format("kafka")
-//        .option("kafka.bootstrap.servers", "localhost:9095")
-//        .option("topic", "output")
-//        .start()
-////        .foreachBatch { (batchDF, batchId) =>
-////          batchDF.persist() // Persistir el DataFrame para optimizar el rendimiento en caso de múltiples operaciones
-////          val resultados = batchDF.collect() // Obtener los resultados del batchDF
-////          resultados.foreach(resultado => writer.process(resultado)) // Enviar cada resultado a Kafka
-////          batchDF.unpersist() // Liberar la persistencia del DataFrame
-////        }
-//      // Iniciar la consulta
-//      query.awaitTermination()
-//
-
-//    }
-//    catch {
-//      case e: Exception =>
-//        println(e)
-//        log.error(s"Ocurrió una excepción de tipo ${e.getClass.getSimpleName} durante la ejecución:")
-//        log.error(e.getMessage)
-//    }
   }
 }

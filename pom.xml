@@ -73,7 +73,7 @@
 <!--            </dependency>-->
 
 
-            <!-- https://mvnrepository.com/artifact/org.mongodb.spark/mongo-spark-connector -->
+<!--            &lt;!&ndash; https://mvnrepository.com/artifact/org.mongodb.spark/mongo-spark-connector &ndash;&gt;-->
             <dependency>
                 <groupId>org.mongodb.spark</groupId>
                 <artifactId>mongo-spark-connector_2.12</artifactId>
