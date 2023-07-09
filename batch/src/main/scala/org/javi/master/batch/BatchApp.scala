@@ -16,8 +16,8 @@ object BatchApp extends Logging {
         .config("spark.executor.memory", "1g")
         .config("spark.mongodb.output.collection", "articulos")
         .config("spark.mongodb.output.database", "elmercado")
-        .config("spark.mongodb.output.uri", "mongodb://localhost:27017")
-        //        .config("spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.11:2.3.2")
+        .config("spark.mongodb.output.uri", "mongodb://masternode:27017")
+        .config("spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.12:3.2.0")
         .appName("ElMercado-BatchApplication")
         .getOrCreate()
 

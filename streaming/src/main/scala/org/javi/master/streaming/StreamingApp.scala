@@ -7,6 +7,7 @@ import org.apache.spark.sql.{Dataset, Row}
 import org.apache.spark.sql.functions.{array_intersect, col, concat, concat_ws, desc, lit, size, when}
 import org.apache.spark.sql.types.{StringType}
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.types.StructType
 
 
 object StreamingApp extends Logging {
@@ -38,27 +39,22 @@ object StreamingApp extends Logging {
       .format("mongodb")
       .load()
 
-    println("mongo read correctly")
+    val caracteristicas_venta = "caracteristicas_venta"
+    val a = mongoData.select("caracteristicas_venta").schema.fields.head.dataType.asInstanceOf[StructType].fields
 
-    val flattenedDf = mongoData
-      .select("nombre_articulo", "palabras_clave", "caracteristicas_venta", "caracteristicas_venta.*")
-      .withColumn("valores", concat(lit("Articulo: "), col("nombre_articulo"), lit("\nCaracteristicas: \n")))
-
-    flattenedDf.show(false)
-    val columns = flattenedDf.drop("nombre_articulo", "palabras_clave", "caracteristicas_venta", "valores").schema.fieldNames
-    val flattenedMongo = columns.foldLeft(flattenedDf) { (tempDf, colName) =>
-      tempDf
-        .withColumn("valores", when(
-          col(colName).isNotNull and !col("valores").endsWith(": \n"), concat_ws(s", ", col("valores"), concat_ws(": ", lit(colName), col(colName)))
-        ).
-          when(
-            col(colName).isNotNull, concat(col("valores"), concat_ws(": ", lit(colName), col(colName))))
-          .otherwise(col("valores"))).cache
-
+    val keyValueColumns = a.map { field =>
+      val colName = field.name
+      val colValue = col(s"$caracteristicas_venta.$colName")
+      when(colValue.isNotNull, concat_ws(", ", concat_ws(":", lit(colName),colValue)))
     }
-      .select("nombre_articulo", "palabras_clave", "valores", "caracteristicas_venta")
 
-    // Leer los mensajes desde el topic de Kafka
+    val articlesDataFrame = mongoData
+      .withColumn("clave_valor", concat_ws(", ", keyValueColumns: _*))
+      .withColumn("valores", concat(lit("Articulo: "), col("nombre_articulo"), lit("\nCaracteristicas: \n"), col("clave_valor")))
+      .select("nombre_articulo", "palabras_clave", "valores")
+
+
+
     val kafkaDF = ssc.readStream
       .format("kafka")
       .option("kafka.bootstrap.servers", bootstrapServer)
@@ -72,10 +68,10 @@ object StreamingApp extends Logging {
       .foreachBatch { (batchDF: Dataset[Row], batchId: Long) =>
         if (batchDF.count() == 1) {
           val busqueda = batchDF.select("BUSQUEDA").collect()(0).mkString.replace("\"", "")
-            .split(" ")
+            .toLowerCase.split(" ")
           println("la busqueda es " + busqueda.mkString)
 
-          val output = flattenedMongo
+          val output = articlesDataFrame
             .withColumn("busqueda", lit(busqueda))
             .withColumn("inters_size", size(array_intersect(col("busqueda"), col("palabras_clave"))))
             .filter(col("inters_size") > 0)
@@ -98,7 +94,7 @@ object StreamingApp extends Logging {
                 .save
             //              ()
             case _ =>
-              println("escribiendo resultados")
+              println(s"Se han encontrado ${output.count()} articulos que podrian interesarte:")
               output
                 .write
                 .format("kafka")
