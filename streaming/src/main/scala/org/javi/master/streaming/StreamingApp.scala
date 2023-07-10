@@ -3,10 +3,9 @@ package org.javi.master.streaming
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.{Dataset, Row}
-import org.apache.spark.sql.functions.{array_intersect, col, concat, concat_ws, desc, lit, size, when}
-import org.apache.spark.sql.types.{StringType}
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Dataset, Row, SparkSession, functions}
+import org.apache.spark.sql.functions.{array_intersect, col, concat, concat_ws, max, lit, size, when}
+import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.types.StructType
 
 
@@ -69,13 +68,13 @@ object StreamingApp extends Logging {
         if (batchDF.count() == 1) {
           val busqueda = batchDF.select("BUSQUEDA").collect()(0).mkString.replace("\"", "")
             .toLowerCase.split(" ")
-          println("la busqueda es " + busqueda.mkString)
 
           val output = articlesDataFrame
             .withColumn("busqueda", lit(busqueda))
             .withColumn("inters_size", size(array_intersect(col("busqueda"), col("palabras_clave"))))
             .filter(col("inters_size") > 0)
-            .orderBy(desc("inters_size"))
+            .withColumn("max_value", max("inters_size").over())
+            .filter(col("max_value") === col("inters_size"))
             .select(
               col("valores").cast(StringType).as("value"))
 
