@@ -38,12 +38,11 @@ object StreamingApp extends Logging {
       .format("mongodb")
       .load()
 
-    val caracteristicas_venta = "caracteristicas_venta"
-    val a = mongoData.select("caracteristicas_venta").schema.fields.head.dataType.asInstanceOf[StructType].fields
+    val caracteristicas_venta = mongoData.select("caracteristicas_venta").schema.fields.head.dataType.asInstanceOf[StructType].fields
 
-    val keyValueColumns = a.map { field =>
+    val keyValueColumns = caracteristicas_venta.map { field =>
       val colName = field.name
-      val colValue = col(s"$caracteristicas_venta.$colName")
+      val colValue = col(s"caracteristicas_venta.$colName")
       when(colValue.isNotNull, concat_ws(", ", concat_ws(":", lit(colName),colValue)))
     }
 
@@ -51,8 +50,6 @@ object StreamingApp extends Logging {
       .withColumn("clave_valor", concat_ws(", ", keyValueColumns: _*))
       .withColumn("valores", concat(lit("Articulo: "), col("nombre_articulo"), lit("\nCaracteristicas: \n"), col("clave_valor")))
       .select("nombre_articulo", "palabras_clave", "valores")
-
-
 
     val kafkaDF = ssc.readStream
       .format("kafka")
